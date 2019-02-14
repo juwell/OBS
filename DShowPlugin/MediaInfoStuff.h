@@ -118,4 +118,4 @@ inline BITMAPINFOHEADER* GetVideoBMIHeader(const AM_MEDIA_TYPE *pMT)
 VideoOutputType GetVideoOutputTypeFromFourCC(DWORD fourCC);
 VideoOutputType GetVideoOutputType(const AM_MEDIA_TYPE &media_type);
 bool GetVideoOutputTypes(const List<MediaOutputInfo> &outputList, UINT width, UINT height, UINT64 frameInterval, List<VideoOutputType> &types);
-MediaOutputInfo* GetBestMediaOutput(const List<MediaOutputInfo> &outputList, UINT width, UINT height, UINT preferredType, UINT64 &frameInterval);
+MediaOutputInfo* GetBestMediaOutput(const List<MediaOutputInfo> &outputList, UINT width, UINT height, int preferredType, UINT64 &frameInterval);

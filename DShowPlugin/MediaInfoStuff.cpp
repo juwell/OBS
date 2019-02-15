@@ -156,33 +156,37 @@ VideoOutputType GetVideoOutputType(const AM_MEDIA_TYPE &media_type)
     return type;
 }
 
-
+// 对应VideoOutputType，类型权重
 const int inputPriority[] =
 {
-    1,
-    6,
-    7,
-    7,
+	1,		   // VideoOutputType_None,
+	// RGB格式在shader中，直接取样就可以了，而YUV等格式
+	// 需要转到RGB再返回，所以肯定是RGB格式效率高，所以
+	// 这里就提高了RGB的权重值
+	15,		   // VideoOutputType_RGB24,
+	15,		   // VideoOutputType_RGB32,
+	15,		   // VideoOutputType_ARGB32,
 
-    12,
-    12,
+	12,		   // VideoOutputType_I420,
+	12,		   // VideoOutputType_YV12,
 
-    -1,
-    -1,
+	// -1表示不用
+	-1,		   // VideoOutputType_Y41P,
+	-1,		   // VideoOutputType_YVU9,
 
-    13,
-    13,
-    13,
-    13,
+	13,		   // VideoOutputType_YVYU,
+	13,		   // VideoOutputType_YUY2,
+	13,		   // VideoOutputType_UYVY,
+	13,		   // VideoOutputType_HDYC,
 
-    5,
-    -1,
+	5,		   // VideoOutputType_MPEG2_VIDEO,
+	-1,		   // VideoOutputType_H264,
 
-    10,
-    10,
-    10,
+	10,		   // VideoOutputType_dvsl,
+	10,		   // VideoOutputType_dvsd,
+	10,		   // VideoOutputType_dvhd,
 
-    9
+	9		   // VideoOutputType_MJPG
 };
 
 bool GetVideoOutputTypes(const List<MediaOutputInfo> &outputList, UINT width, UINT height, UINT64 frameInterval, List<VideoOutputType> &types)
@@ -212,7 +216,8 @@ bool GetVideoOutputTypes(const List<MediaOutputInfo> &outputList, UINT width, UI
     return types.Num() != 0;
 }
 
-MediaOutputInfo* GetBestMediaOutput(const List<MediaOutputInfo> &outputList, UINT width, UINT height, UINT preferredType, UINT64 &frameInterval)
+// preferredType变量有可能会传入-1，所以不能用UINT
+MediaOutputInfo* GetBestMediaOutput(const List<MediaOutputInfo> &outputList, UINT width, UINT height, int preferredType, UINT64 &frameInterval)
 {
     MediaOutputInfo *bestMediaOutput = NULL;
     int bestPriority = -1;
@@ -220,47 +225,49 @@ MediaOutputInfo* GetBestMediaOutput(const List<MediaOutputInfo> &outputList, UIN
     UINT64 bestFrameInterval = 0;
 
     bool bUsePreferredType = preferredType != -1;
+	// 把变量移到循环外定义，详见《Effective C++》
+	bool better;
+	int priority;
+	UINT64 curInterval;
+	UINT64 intervalDifference;
+	for (UINT i = 0; i < outputList.Num(); ++i)
+	{
+		MediaOutputInfo &outputInfo = outputList[i];
+		//VIDEOINFOHEADER *pVih = reinterpret_cast<VIDEOINFOHEADER*>(outputInfo.mediaType->pbFormat);
 
-    for(UINT i=0; i<outputList.Num(); i++)
-    {
-        MediaOutputInfo &outputInfo = outputList[i];
-        //VIDEOINFOHEADER *pVih = reinterpret_cast<VIDEOINFOHEADER*>(outputInfo.mediaType->pbFormat);
+		if (outputInfo.minCX <= width  && outputInfo.maxCX >= width &&
+			outputInfo.minCY <= height && outputInfo.maxCY >= height)
+		{
+			priority = inputPriority[(UINT)outputInfo.videoType];
+			if (priority == -1)
+				continue;
 
-        if( outputInfo.minCX <= width  && outputInfo.maxCX >= width &&
-            outputInfo.minCY <= height && outputInfo.maxCY >= height)
-        {
-            int priority = inputPriority[(UINT)outputInfo.videoType];
-            if(priority == -1)
-                continue;
+			if (frameInterval > outputInfo.maxFrameInterval)
+				curInterval = outputInfo.maxFrameInterval;
+			else if (frameInterval < outputInfo.minFrameInterval)
+				curInterval = outputInfo.minFrameInterval;
+			else
+				curInterval = frameInterval;
 
-            UINT64 curInterval;
-            if(frameInterval > outputInfo.maxFrameInterval)
-                curInterval = outputInfo.maxFrameInterval;
-            else if(frameInterval < outputInfo.minFrameInterval)
-                curInterval = outputInfo.minFrameInterval;
-            else
-                curInterval = frameInterval;
+			intervalDifference = (UINT64)_abs64(INT64(curInterval) - INT64(frameInterval));
 
-            UINT64 intervalDifference = (UINT64)_abs64(INT64(curInterval)-INT64(frameInterval));
+			if (intervalDifference > closestIntervalDifference)
+				continue;
 
-            if (intervalDifference > closestIntervalDifference)
-                continue;
+			if (!bUsePreferredType)
+				better = priority > bestPriority || !bestMediaOutput || intervalDifference < closestIntervalDifference;
+			else
+				better = (UINT)outputInfo.videoType == preferredType && intervalDifference <= closestIntervalDifference;
 
-            bool better;
-            if (!bUsePreferredType)
-                better = priority > bestPriority || !bestMediaOutput || intervalDifference < closestIntervalDifference;
-            else
-                better = (UINT)outputInfo.videoType == preferredType && intervalDifference <= closestIntervalDifference;
-
-            if (better)
-            {
-                closestIntervalDifference = intervalDifference;
-                bestFrameInterval = curInterval;
-                bestMediaOutput = &outputInfo;
-                bestPriority = priority;
-            }
-        }
-    }
+			if (better)
+			{
+				closestIntervalDifference = intervalDifference;
+				bestFrameInterval = curInterval;
+				bestMediaOutput = &outputInfo;
+				bestPriority = priority;
+			}
+		}
+	}
 
     frameInterval = bestFrameInterval;
     return bestMediaOutput;

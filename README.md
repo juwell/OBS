@@ -5,4 +5,4 @@ This is the repository for OBS, an open source live streaming / recording app fo
 
 Downloadable binaries for Windows can be found on our website, https://obsproject.com/
 
-由于之前项目建立在OBS之上，换到OBSS成本比较大，因而只能继续使用，中间过程中也修复了不少bug，优化了一些代码，因此整理并分享出来
+原项目已停止维护，但由于之前项目建立在OBS之上，换到OBS Studio成本比较大，所以就继续使用OBS了。开发的过程中也修复了不少bug，优化了一些代码，因此整理并分享出来

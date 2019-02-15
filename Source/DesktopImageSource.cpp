@@ -313,36 +313,37 @@ public:
             bMouseCaptured = bCaptureMouse && GetCursorInfo(&ci);
 
             bool bWindowNotFound = false;
-            HWND hwndCapture = NULL;
+			//HWND hwndCapture = NULL;
             if(captureType == 1)
             {
-                if(hwndFoundWindow && IsWindow(hwndFoundWindow))
-                {
-                    TCHAR lpClassName[256];
-                    BOOL bSuccess = GetClassName(hwndFoundWindow, lpClassName, 255);
+				// 句柄在用户选择窗口的时候已经有了，直接用就行
+				//if(hwndFoundWindow && IsWindow(hwndFoundWindow))
+				//{
+				//    TCHAR lpClassName[256];
+				//    BOOL bSuccess = GetClassName(hwndFoundWindow, lpClassName, 255);
 
-                    if(bSuccess && scmpi(lpClassName, strWindowClass) == 0)
-                        hwndCapture = hwndFoundWindow;
-                    else
-                    {
-                        hwndCapture = FindWindow(strWindowClass, strWindow);
-                        if(!hwndCapture)
-                            hwndCapture = FindWindow(strWindowClass, NULL);
-                    }
-                }
-                else
-                {
-                    hwndCapture = FindWindow(strWindowClass, strWindow);
-                    if(!hwndCapture)
-                        hwndCapture = FindWindow(strWindowClass, NULL);
-                }
+				//    if(bSuccess && scmpi(lpClassName, strWindowClass) == 0)
+				//        hwndCapture = hwndFoundWindow;
+				//    else
+				//    {
+				//        hwndCapture = FindWindow(strWindowClass, strWindow);
+				//        if(!hwndCapture)
+				//            hwndCapture = FindWindow(strWindowClass, NULL);
+				//    }
+				//}
+				//else
+				//{
+				//    hwndCapture = FindWindow(strWindowClass, strWindow);
+				//    if(!hwndCapture)
+				//        hwndCapture = FindWindow(strWindowClass, NULL);
+				//}
 
-                //note to self - hwndFoundWindow is used to make sure it doesn't pick up another window unintentionally if the title changes
-                hwndFoundWindow = hwndCapture;
+				//note to self - hwndFoundWindow is used to make sure it doesn't pick up another window unintentionally if the title changes
+				//hwndFoundWindow = hwndCapture;
 
-                if(!hwndCapture)
-                    bWindowNotFound = true;
-                if(hwndCapture && (IsIconic(hwndCapture) || !IsWindowVisible(hwndCapture)))
+				if(!hwndFoundWindow)
+					bWindowNotFound = true;
+				if(hwndFoundWindow && (IsIconic(hwndFoundWindow) || !IsWindowVisible(hwndFoundWindow)))
                 {
                     ReleaseCurrentHDC(hDC);
                     //bWindowMinimized = true;
@@ -367,10 +368,10 @@ public:
             }
 
             HDC hCaptureDC;
-            if(hwndCapture && captureType == 1 && !bClientCapture)
-                hCaptureDC = GetWindowDC(hwndCapture);
+			if(hwndFoundWindow && captureType == 1 && !bClientCapture)
+				hCaptureDC = GetWindowDC(hwndFoundWindow);
             else
-                hCaptureDC = GetDC(hwndCapture);
+				hCaptureDC = GetDC(hwndFoundWindow);
 
             if(bWindowNotFound)
             {
@@ -389,7 +390,7 @@ public:
                 }
             }
 
-            ReleaseDC(hwndCapture, hCaptureDC);
+			ReleaseDC(hwndFoundWindow, hCaptureDC);
 
             //----------------------------------------------------------
             // capture mouse
@@ -410,11 +411,11 @@ public:
                             if(captureType == 1)
                             {
                                 if(bClientCapture)
-                                    ClientToScreen(hwndCapture, &capturePos);
+                                ClientToScreen(hwndFoundWindow, &capturePos);
                                 else
                                 {
                                     RECT windowRect;
-                                    GetWindowRect(hwndCapture, &windowRect);
+                                GetWindowRect(hwndFoundWindow, &windowRect);
                                     capturePos.x += windowRect.left;
                                     capturePos.y += windowRect.top;
                                 }
@@ -566,6 +567,7 @@ public:
         UINT newCaptureType     = data->GetInt(TEXT("captureType"));
         String strNewWindow     = data->GetString(TEXT("window"));
         String strNewWindowClass= data->GetString(TEXT("windowClass"));
+		DWORD hwndWindow		= data->GetHex(TEXT("windowsHWND"));
         BOOL bNewClientCapture  = data->GetInt(TEXT("innerWindow"), 1);
 
         bCaptureMouse   = data->GetInt(TEXT("captureMouse"), 1);
@@ -587,7 +589,7 @@ public:
         else if(gamma > 175)  gamma = 175;
 
         UINT newMonitor = data->GetInt(TEXT("monitor"));
-        if(newMonitor > App->NumMonitors())
+		if(newMonitor >= App->NumMonitors())
             newMonitor = 0;
 
         if( captureRect.left != x || captureRect.right != (x+cx) || captureRect.top != cy || captureRect.bottom != (y+cy) ||
@@ -630,6 +632,7 @@ public:
             strWindow          = strNewWindow;
             strWindowClass     = strNewWindowClass;
             bClientCapture     = bNewClientCapture;
+			hwndFoundWindow	   = HWND(hwndWindow);
 
             bCompatibilityMode = bNewCompatibleMode;
             bUsePointFiltering = bNewUsePointFiltering;
@@ -757,7 +760,32 @@ ImageSource* STDCALL CreateDesktopSource(XElement *data)
     return new DesktopImageSource(App->GetFrameTime(), data);
 }
 
-void RefreshWindowList(HWND hwndCombobox, StringList &classList)
+// 根据各种规则，把窗口列表过滤下
+bool FilterWindows(HWND hwndCurrent, String name, DWORD styles, DWORD exStyles, RECT clientRect)
+{
+	if (name.IsValid() && sstri(name, L"battlefield") != nullptr)
+		exStyles &= ~WS_EX_TOOLWINDOW;
+
+	if (hwndCurrent && !IsWindowVisible(hwndCurrent))
+	{
+		return false;
+	}
+
+	if (sstri(name, L"AirPlayer") != nullptr && (styles & WS_CHILD) == 0)
+	{
+		// AirPlayer投屏是在子窗口显示内容的，因此需要过滤掉父窗口，防止混淆
+		return false;
+	}
+
+	if ((exStyles & WS_EX_TOOLWINDOW) == 0 && (styles & WS_CHILD) == 0 &&
+		clientRect.bottom != 0 && clientRect.right != 0 /*&& hwndParent == NULL*/)
+	{
+		return true;
+	}
+	return false;
+}
+
+void RefreshWindowList(HWND hwndCombobox, StringList &classList, List<HWND> &hwndList)
 {
     SendMessage(hwndCombobox, CB_RESETCONTENT, 0, 0);
     classList.Clear();
@@ -777,11 +805,12 @@ void RefreshWindowList(HWND hwndCombobox, StringList &classList)
             DWORD exStyles = (DWORD)GetWindowLongPtr(hwndCurrent, GWL_EXSTYLE);
             DWORD styles = (DWORD)GetWindowLongPtr(hwndCurrent, GWL_STYLE);
 
-            if (strWindowName.IsValid() && sstri(strWindowName, L"battlefield") != nullptr)
-                exStyles &= ~WS_EX_TOOLWINDOW;
+            //if (strWindowName.IsValid() && sstri(strWindowName, L"battlefield") != nullptr)
+            //    exStyles &= ~WS_EX_TOOLWINDOW;
 
-            if( (exStyles & WS_EX_TOOLWINDOW) == 0 && (styles & WS_CHILD) == 0 &&
-                clientRect.bottom != 0 && clientRect.right != 0 /*&& hwndParent == NULL*/)
+            //if( (exStyles & WS_EX_TOOLWINDOW) == 0 && (styles & WS_CHILD) == 0 &&
+            //    clientRect.bottom != 0 && clientRect.right != 0 /*&& hwndParent == NULL*/)
+			if (FilterWindows(hwndCurrent, strWindowName, styles, exStyles, clientRect))
             {
                 //-------
 
@@ -820,6 +849,7 @@ void RefreshWindowList(HWND hwndCombobox, StringList &classList)
                 strClassName.SetLength(slen(strClassName));
 
                 classList << strClassName;
+				hwndList << hwndCurrent;
             }
         }
     } while (hwndCurrent = GetNextWindow(hwndCurrent, GW_HWNDNEXT));
@@ -830,7 +860,9 @@ struct ConfigDesktopSourceInfo
     CTSTR lpName;
     XElement *data;
     int dialogID;
+	// 这2个是一一对应的关系
     StringList strClasses;
+	List<HWND> winHwnds;
     int prevCX, prevCY;
     bool sizeSet;
 
@@ -867,7 +899,14 @@ void SelectTargetWindow(HWND hwnd, bool bRefresh)
     if(windowID >= info->strClasses.Num())
         return;
 
-    HWND hwndTarget = FindWindow(info->strClasses[windowID], strWindow);
+	HWND hwndTarget = info->winHwnds[windowID];
+	if (!hwndTarget)
+	{
+		// 如果窗口句柄为0，通过名字再取一次
+		hwndTarget = FindWindow(info->strClasses[windowID], strWindow);
+		info->winHwnds[windowID] = hwndTarget;
+	}
+
     if(!hwndTarget)
     {
         HWND hwndLastKnownHWND = (HWND)SendMessage(hwndWindowList, CB_GETITEMDATA, windowID, 0);
@@ -1372,7 +1411,7 @@ INT_PTR CALLBACK ConfigDesktopSourceProc(HWND hwnd, UINT message, WPARAM wParam,
                     CTSTR lpWindowClass = data->GetString(TEXT("windowClass"));
                     BOOL bInnerWindow = (BOOL)data->GetInt(TEXT("innerWindow"), 1);
 
-                    RefreshWindowList(hwndWindowList, info->strClasses);
+                    RefreshWindowList(hwndWindowList, info->strClasses, info->winHwnds);
 
                     UINT windowID = 0;
                     if(lpWindowName)
@@ -1790,7 +1829,7 @@ INT_PTR CALLBACK ConfigDesktopSourceProc(HWND hwnd, UINT message, WPARAM wParam,
                         CTSTR lpWindowName = data->GetString(TEXT("window"));
 
                         HWND hwndWindowList = GetDlgItem(hwnd, IDC_WINDOW);
-                        RefreshWindowList(hwndWindowList, info->strClasses);
+                        RefreshWindowList(hwndWindowList, info->strClasses, info->winHwnds);
 
                         UINT windowID = 0;
                         if(lpWindowName)
@@ -1964,6 +2003,7 @@ INT_PTR CALLBACK ConfigDesktopSourceProc(HWND hwnd, UINT message, WPARAM wParam,
                         {
                             data->SetString(TEXT("window"),     strWindow);
                             data->SetString(TEXT("windowClass"),info->strClasses[windowID]);
+							data->SetHex(TEXT("windowsHWND"), (DWORD)info->winHwnds[windowID]);
                         }
 
                         data->SetInt(TEXT("innerWindow"),   bInnerWindow);

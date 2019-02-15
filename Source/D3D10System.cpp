@@ -187,7 +187,7 @@ D3D10System::D3D10System()
     UINT adapterID = GlobalConfig->GetInt(TEXT("Video"), TEXT("Adapter"), 0);
 
     if(FAILED(err = CreateDXGIFactory1(iidVal, (void**)&factory)))
-        CrashError(TEXT("Could not create DXGI factory"));
+        CrashError(TEXT("Could not create DXGI factory err:%x"),  err);
 
     UINT numAdapters = 0, i = 0;
     IDXGIAdapter1 *giAdapter;
@@ -207,7 +207,7 @@ D3D10System::D3D10System()
 
     IDXGIAdapter1 *adapter;
     if(FAILED(err = factory->EnumAdapters1(adapterID, &adapter)))
-        CrashError(TEXT("Could not get DXGI adapter %d"), adapterID);
+        CrashError(TEXT("Could not get DXGI adapter %d, err:%x"), adapterID, err);
 
     HandleNvidiaOptimus(factory, adapter, adapterID);
 
@@ -271,7 +271,7 @@ D3D10System::D3D10System()
 
     err = d3d->CreateDepthStencilState(&depthDesc, &depthState);
     if(FAILED(err))
-        CrashError(TEXT("Unable to create depth state"));
+        CrashError(TEXT("Unable to create depth state err:%x"), err);
 
     d3d->OMSetDepthStencilState(depthState, 0);
 
@@ -286,7 +286,7 @@ D3D10System::D3D10System()
 
     err = d3d->CreateRasterizerState(&rasterizerDesc, &rasterizerState);
     if(FAILED(err))
-        CrashError(TEXT("Unable to create rasterizer state"));
+        CrashError(TEXT("Unable to create rasterizer state err:%x"), err);
 
     d3d->RSSetState(rasterizerState);
 
@@ -296,18 +296,18 @@ D3D10System::D3D10System()
 
     err = d3d->CreateRasterizerState(&rasterizerDesc, &scissorState);
     if(FAILED(err))
-        CrashError(TEXT("Unable to create scissor state"));
+        CrashError(TEXT("Unable to create scissor state err:%x"), err);
 
     //------------------------------------------------------------------
 
     ID3D10Texture2D *backBuffer = NULL;
     err = swap->GetBuffer(0, IID_ID3D10Texture2D, (void**)&backBuffer);
     if(FAILED(err))
-        CrashError(TEXT("Unable to get back buffer from swap chain"));
+        CrashError(TEXT("Unable to get back buffer from swap chain err:%x"), err);
 
     err = d3d->CreateRenderTargetView(backBuffer, NULL, &swapRenderView);
     if(FAILED(err))
-        CrashError(TEXT("Unable to get render view from back buffer"));
+        CrashError(TEXT("Unable to get render view from back buffer err:%x"), err);
 
     backBuffer->Release();
 
@@ -329,7 +329,7 @@ D3D10System::D3D10System()
 
     err = d3d->CreateBlendState(&disabledBlendDesc, &disabledBlend);
     if(FAILED(err))
-        CrashError(TEXT("Unable to create disabled blend state"));
+        CrashError(TEXT("Unable to create disabled blend state err:%x"), err);
 
     this->BlendFunction(GS_BLEND_SRCALPHA, GS_BLEND_INVSRCALPHA, 1.0f);
     bBlendingEnabled = true;
@@ -815,8 +815,9 @@ void D3D10System::BlendFunction(GSBlendType srcFactor, GSBlendType destFactor, f
     savedBlend->destFactor      = destFactor;
     savedBlend->srcFactor       = srcFactor;
 
-    if(FAILED(d3d->CreateBlendState(&blendDesc, &savedBlend->blendState)))
-        CrashError(TEXT("Could not set blend state"));
+	HRESULT err;
+    if(FAILED(err = d3d->CreateBlendState(&blendDesc, &savedBlend->blendState)))
+        CrashError(TEXT("Could not set blend state err:%x"), err);
 
     if(bBlendingEnabled)
         d3d->OMSetBlendState(savedBlend->blendState, curBlendFactor, 0xFFFFFFFF);
@@ -1048,16 +1049,18 @@ void D3D10System::ResizeView()
 
     SafeRelease(swapRenderView);
 
-    swap->ResizeBuffers(2, 0, 0, DXGI_FORMAT_B8G8R8A8_UNORM, 0);
+	HRESULT err = swap->ResizeBuffers(2, 0, 0, DXGI_FORMAT_B8G8R8A8_UNORM, 0);
+	if (FAILED(err))
+		CrashError(TEXT("Unable to ResizeBuffers the swap chain %x"), err);
 
     ID3D10Texture2D *backBuffer = NULL;
-    HRESULT err = swap->GetBuffer(0, IID_ID3D10Texture2D, (void**)&backBuffer);
+    err = swap->GetBuffer(0, IID_ID3D10Texture2D, (void**)&backBuffer);
     if(FAILED(err))
-        CrashError(TEXT("Unable to get back buffer from swap chain"));
+        CrashError(TEXT("Unable to get back buffer from swap chain %x"), err);
 
     err = d3d->CreateRenderTargetView(backBuffer, NULL, &swapRenderView);
     if(FAILED(err))
-        CrashError(TEXT("Unable to get render view from back buffer"));
+        CrashError(TEXT("Unable to get render view from back buffer %x"), err);
 
     backBuffer->Release();
 }
